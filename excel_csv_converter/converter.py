@@ -22,13 +22,28 @@ class ExcelToCsvConverter:
     def __init__(self, input_dir: Path, output_dir: Path, converter: FileConverter = ExcelToCsv()):
         self.input_dir = Path(input_dir)
         self.output_dir = Path(output_dir)
+        self.done_dir = self.input_dir / "done"
         self.converter = converter
 
     def convert_all(self):
+        self.done_dir.mkdir(parents=True, exist_ok=True)
         for excel_file in self.input_dir.glob("*.xlsx"):
+            # skip files in done_dir
+            if excel_file.parent != self.input_dir:
+                continue
+            
+            # skip temporary files
+            if excel_file.name.startswith("~$"):
+                continue
+
             csv_filename = excel_file.stem + ".csv"
             output_path = self.output_dir / csv_filename
             self.converter.convert(excel_file, output_path)
+            
+            # 変換後に移動
+            target_path = self.done_dir / excel_file.name
+            excel_file.rename(target_path)
+            print(f"Moved: {excel_file} -> {target_path}")
 
 class ExcelHandler(FileSystemEventHandler):
     def __init__(self, converter: ExcelToCsvConverter):
@@ -36,11 +51,13 @@ class ExcelHandler(FileSystemEventHandler):
 
     def on_created(self, event):
         if not event.is_directory and event.src_path.endswith(".xlsx"):
-            self.converter.convert_all()
+            if not Path(event.src_path).name.startswith("~$"):
+                self.converter.convert_all()
 
     def on_modified(self, event):
         if not event.is_directory and event.src_path.endswith(".xlsx"):
-            self.converter.convert_all()
+            if not Path(event.src_path).name.startswith("~$"):
+                self.converter.convert_all()
 
 def start_watching(input_dir: Path, output_dir: Path):
     converter = ExcelToCsvConverter(input_dir, output_dir)
